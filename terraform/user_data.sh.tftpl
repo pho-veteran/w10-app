@@ -1,0 +1,330 @@
+#!/usr/bin/env bash
+set -euxo pipefail
+
+# Ghi toàn bộ stdout/stderr của user-data vào log để tiện debug sau khi EC2 boot.
+exec > >(tee /var/log/user-data.log) 2>&1
+
+# Tránh apt yêu cầu nhập tay trong lúc cài package.
+export DEBIAN_FRONTEND=noninteractive
+
+# Nhận giá trị từ Terraform template.
+KUBECTL_VERSION="${kubectl_version}"
+MINIKUBE_VERSION="${minikube_version}"
+NODE_PORT="${node_port}"
+ARGOCD_HOST_PORT="${argocd_host_port}"
+GRAFANA_HOST_PORT="${grafana_host_port}"
+PROMETHEUS_HOST_PORT="${prometheus_host_port}"
+PROJECT_NAME="${project_name}"
+REPO_DIR="/home/ubuntu/w10-gitops-repo"
+PORT_FORWARD_SERVICE="/etc/systemd/system/minikube-web-port-forward.service"
+ARGOCD_PORT_FORWARD_SERVICE="/etc/systemd/system/argocd-server-port-forward.service"
+GRAFANA_PORT_FORWARD_SERVICE="/etc/systemd/system/grafana-port-forward.service"
+PROMETHEUS_PORT_FORWARD_SERVICE="/etc/systemd/system/prometheus-port-forward.service"
+ARGOCD_INSTALL_URL="https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.9/manifests/install.yaml"
+ARGOCD_CLI_URL="https://github.com/argoproj/argo-cd/releases/download/v2.14.9/argocd-linux-amd64"
+ARGO_ROLLOUTS_CLI_URL="https://github.com/argoproj/argo-rollouts/releases/download/v1.8.3/kubectl-argo-rollouts-linux-amd64"
+REPO_URL="${gitops_repo_url}"
+ROOT_APP_PATH="$${REPO_DIR}/apps/root.yaml"
+
+# Tạo swap sớm để giảm nguy cơ thiếu RAM khi cài package, chạy Docker và boot minikube.
+if ! swapon --show | grep -q '^/swapfile'; then
+  fallocate -l 6G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+fi
+
+grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+sysctl vm.swappiness=10
+printf 'vm.swappiness=10\n' > /etc/sysctl.d/99-swap.conf
+
+# Cài các package nền cần cho Docker, Minikube, Git và Kubernetes networking.
+apt-get update
+apt-get install -y ca-certificates curl git gnupg lsb-release conntrack socat apt-transport-https
+
+# Thêm Docker official apt repository.
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+
+# Cài Docker Engine và bật service ngay khi máy khởi động.
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+systemctl enable --now docker
+
+# Cho user ubuntu dùng Docker không cần sudo.
+usermod -aG docker ubuntu
+
+# Cài kubectl theo version được truyền từ Terraform.
+curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+chmod +x /usr/local/bin/kubectl
+
+# Cài Minikube theo version được truyền từ Terraform.
+curl -fsSLo /usr/local/bin/minikube "https://storage.googleapis.com/minikube/releases/$${MINIKUBE_VERSION}/minikube-linux-amd64"
+chmod +x /usr/local/bin/minikube
+
+# Cài ArgoCD CLI để tiện debug/sync trong lab.
+curl -fsSLo /usr/local/bin/argocd "$${ARGOCD_CLI_URL}"
+chmod +x /usr/local/bin/argocd
+
+# Cài Argo Rollouts kubectl plugin để theo dõi rollout dễ hơn trong lab.
+curl -fsSLo /usr/local/bin/kubectl-argo-rollouts "$${ARGO_ROLLOUTS_CLI_URL}"
+chmod +x /usr/local/bin/kubectl-argo-rollouts
+
+# Clone GitOps repo để bootstrap root Application.
+rm -rf "$${REPO_DIR}"
+sudo -iu ubuntu git clone "$${REPO_URL}" "$${REPO_DIR}"
+
+# Khởi động Minikube bằng Docker driver.
+sudo -iu ubuntu minikube start --force --driver=docker --memory=3000mb --cpus=2 --listen-address=0.0.0.0 --extra-config=kubeadm.ignore-preflight-errors=NumCPU,Mem
+
+# Workload image được pull từ Docker Hub theo tag trong GitOps repo.
+
+# Cài ArgoCD và đợi control plane sẵn sàng.
+sudo -iu ubuntu kubectl create namespace argocd --dry-run=client -o yaml | sudo -iu ubuntu kubectl apply -f -
+sudo -iu ubuntu kubectl -n argocd apply --server-side -f "$${ARGOCD_INSTALL_URL}"
+sudo -iu ubuntu kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge -p '{"data":{"server.insecure":"true"}}'
+sudo -iu ubuntu kubectl -n argocd rollout restart deployment/argocd-server
+sudo -iu ubuntu kubectl wait --for=condition=Established crd/applications.argoproj.io --timeout=120s
+sudo -iu ubuntu kubectl wait --for=condition=Established crd/appprojects.argoproj.io --timeout=120s
+sudo -iu ubuntu kubectl -n argocd rollout status deployment/argocd-server --timeout=300s
+sudo -iu ubuntu kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=300s
+sudo -iu ubuntu kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=300s
+sudo -iu ubuntu kubectl -n argocd rollout status deployment/argocd-applicationset-controller --timeout=300s
+sudo -iu ubuntu kubectl -n argocd wait --for=condition=ready pod --all --timeout=300s
+
+# Bootstrap root Application từ folder GitOps trong repo clone.
+sudo -iu ubuntu kubectl apply -f "$${ROOT_APP_PATH}"
+
+# Đợi ArgoCD tạo và sync child app argo-rollouts trước khi sync workload web.
+for attempt in $(seq 1 60); do
+  if sudo -iu ubuntu kubectl -n argocd get application argo-rollouts >/dev/null 2>&1; then
+    break
+  fi
+  sleep 5
+done
+
+for attempt in $(seq 1 120); do
+  if [ "$(sudo -iu ubuntu kubectl -n argocd get application argo-rollouts -o jsonpath='{.status.sync.status}' 2>/dev/null || true)" = "Synced" ] && \
+     [ "$(sudo -iu ubuntu kubectl -n argocd get application argo-rollouts -o jsonpath='{.status.health.status}' 2>/dev/null || true)" = "Healthy" ]; then
+    break
+  fi
+  sleep 5
+done
+
+sudo -iu ubuntu kubectl wait --for=condition=Established crd/rollouts.argoproj.io --timeout=300s
+sudo -iu ubuntu kubectl wait --for=condition=Established crd/analysistemplates.argoproj.io --timeout=300s
+sudo -iu ubuntu kubectl -n argo-rollouts wait --for=condition=ready pod --all --timeout=300s
+
+# Đợi ArgoCD tạo và sync child app web trước khi rollout workload.
+for attempt in $(seq 1 60); do
+  if sudo -iu ubuntu kubectl -n argocd get application web >/dev/null 2>&1; then
+    break
+  fi
+  sleep 5
+done
+
+for attempt in $(seq 1 60); do
+  if [ "$(sudo -iu ubuntu kubectl -n argocd get application web -o jsonpath='{.status.sync.status}' 2>/dev/null || true)" = "Synced" ] && \
+     [ "$(sudo -iu ubuntu kubectl -n argocd get application web -o jsonpath='{.status.health.status}' 2>/dev/null || true)" = "Healthy" ]; then
+    break
+  fi
+  sleep 5
+done
+
+# Đợi workload sync lên cluster rồi smoke test qua service nội bộ.
+for attempt in $(seq 1 60); do
+  if sudo -iu ubuntu kubectl get namespace demo >/dev/null 2>&1 && sudo -iu ubuntu kubectl get rollout/web -n demo >/dev/null 2>&1; then
+    break
+  fi
+  sleep 5
+done
+
+sudo -iu ubuntu kubectl -n demo wait --for=condition=ready pod -l app.kubernetes.io/name=web --timeout=600s
+if [ "$(sudo -iu ubuntu kubectl -n argocd get application web -o jsonpath='{.status.sync.status}' 2>/dev/null || true)" != "Synced" ] || \
+   [ "$(sudo -iu ubuntu kubectl -n argocd get application web -o jsonpath='{.status.health.status}' 2>/dev/null || true)" != "Healthy" ]; then
+  sudo -iu ubuntu kubectl -n argocd get applications -o wide || true
+  sudo -iu ubuntu kubectl -n argocd describe application web || true
+  sudo -iu ubuntu kubectl -n demo get rollout web -o wide || true
+  exit 1
+fi
+
+sudo -iu ubuntu kubectl -n demo port-forward --address 127.0.0.1 service/web 5000:80 >/tmp/web-port-forward.log 2>&1 &
+PORT_FORWARD_PID=$!
+cleanup_temp_port_forward() {
+  pkill -f 'kubectl -n demo port-forward --address 127.0.0.1 service/web 5000:80' 2>/dev/null || true
+}
+trap cleanup_temp_port_forward EXIT
+
+for attempt in $(seq 1 30); do
+  if curl -fsS "http://127.0.0.1:5000/api/health" >/dev/null; then
+    break
+  fi
+  sleep 2
+done
+
+if ! curl -fsS "http://127.0.0.1:5000/api/health" >/dev/null; then
+  sudo -iu ubuntu kubectl -n demo get pods,svc,endpoints
+  sudo -iu ubuntu kubectl -n demo describe pod -l app.kubernetes.io/name=web || true
+  exit 1
+fi
+
+curl -fsS "http://127.0.0.1:5000/" >/dev/null
+curl -fsS "http://127.0.0.1:5000/api/message" >/dev/null
+cleanup_temp_port_forward
+trap - EXIT
+
+# Dựng systemd port-forward host -> Service để ALB gọi vào.
+cat > "$${PORT_FORWARD_SERVICE}" <<EOF
+[Unit]
+Description=Forward host port $${NODE_PORT} to web Service inside minikube
+After=docker.service
+Requires=docker.service
+
+[Service]
+User=ubuntu
+Environment=KUBECONFIG=/home/ubuntu/.kube/config
+ExecStartPre=/bin/bash -lc 'for i in {1..60}; do /usr/local/bin/kubectl -n demo get endpoints web -o jsonpath="{.subsets[0].addresses[0].ip}" >/dev/null 2>&1 && exit 0; sleep 5; done; exit 1'
+ExecStart=/usr/local/bin/kubectl -n demo port-forward --address 0.0.0.0 service/web $${NODE_PORT}:80
+Restart=always
+RestartSec=5
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > "$${ARGOCD_PORT_FORWARD_SERVICE}" <<EOF
+[Unit]
+Description=Forward host port $${ARGOCD_HOST_PORT} to ArgoCD Server inside minikube
+After=docker.service minikube-web-port-forward.service
+Requires=docker.service
+
+[Service]
+User=ubuntu
+Environment=KUBECONFIG=/home/ubuntu/.kube/config
+ExecStartPre=/bin/bash -lc 'for i in {1..60}; do /usr/local/bin/kubectl -n argocd get endpoints argocd-server -o jsonpath="{.subsets[0].addresses[0].ip}" >/dev/null 2>&1 && exit 0; sleep 5; done; exit 1'
+ExecStart=/usr/local/bin/kubectl -n argocd port-forward --address 0.0.0.0 service/argocd-server $${ARGOCD_HOST_PORT}:80
+Restart=always
+RestartSec=5
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > "$${GRAFANA_PORT_FORWARD_SERVICE}" <<EOF
+[Unit]
+Description=Forward host port $${GRAFANA_HOST_PORT} to Grafana inside minikube
+After=docker.service argocd-server-port-forward.service
+Requires=docker.service
+
+[Service]
+User=ubuntu
+Environment=KUBECONFIG=/home/ubuntu/.kube/config
+ExecStartPre=/bin/bash -lc 'for i in {1..120}; do /usr/local/bin/kubectl -n monitoring get endpoints kube-prometheus-stack-grafana -o jsonpath="{.subsets[0].addresses[0].ip}" >/dev/null 2>&1 && exit 0; sleep 5; done; exit 1'
+ExecStart=/usr/local/bin/kubectl -n monitoring port-forward --address 0.0.0.0 service/kube-prometheus-stack-grafana $${GRAFANA_HOST_PORT}:80
+Restart=always
+RestartSec=5
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > "$${PROMETHEUS_PORT_FORWARD_SERVICE}" <<EOF
+[Unit]
+Description=Forward host port $${PROMETHEUS_HOST_PORT} to Prometheus inside minikube
+After=docker.service argocd-server-port-forward.service
+Requires=docker.service
+
+[Service]
+User=ubuntu
+Environment=KUBECONFIG=/home/ubuntu/.kube/config
+ExecStartPre=/bin/bash -lc 'for i in {1..120}; do /usr/local/bin/kubectl -n monitoring get endpoints kube-prometheus-stack-prometheus -o jsonpath="{.subsets[0].addresses[0].ip}" >/dev/null 2>&1 && exit 0; sleep 5; done; exit 1'
+ExecStart=/usr/local/bin/kubectl -n monitoring port-forward --address 0.0.0.0 service/kube-prometheus-stack-prometheus $${PROMETHEUS_HOST_PORT}:9090
+Restart=always
+RestartSec=5
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now minikube-web-port-forward.service
+systemctl enable --now argocd-server-port-forward.service
+systemctl enable grafana-port-forward.service
+systemctl enable prometheus-port-forward.service
+systemctl start --no-block grafana-port-forward.service
+systemctl start --no-block prometheus-port-forward.service
+
+WEB_READY=false
+ARGOCD_READY=false
+GRAFANA_READY=false
+PROMETHEUS_READY=false
+
+restart_port_forward_if_stopped() {
+  local service_name="$1"
+  local state
+  state="$(systemctl is-active "$${service_name}" || true)"
+  case "$${state}" in
+    active|activating)
+      ;;
+    *)
+      systemctl restart --no-block "$${service_name}" || true
+      ;;
+  esac
+}
+
+for attempt in $(seq 1 30); do
+  if curl -fsS "http://127.0.0.1:$${NODE_PORT}/api/health" >/dev/null; then
+    curl -fsS "http://127.0.0.1:$${NODE_PORT}/api/message" >/dev/null
+    WEB_READY=true
+    break
+  fi
+  sleep 5
+done
+
+for attempt in $(seq 1 60); do
+  if curl -fsS "http://127.0.0.1:$${ARGOCD_HOST_PORT}/" >/dev/null; then
+    ARGOCD_READY=true
+    break
+  fi
+  restart_port_forward_if_stopped argocd-server-port-forward.service
+  sleep 5
+done
+
+for attempt in $(seq 1 120); do
+  if curl -fsS "http://127.0.0.1:$${GRAFANA_HOST_PORT}/login" >/dev/null; then
+    GRAFANA_READY=true
+    break
+  fi
+  restart_port_forward_if_stopped grafana-port-forward.service
+  sleep 5
+done
+
+for attempt in $(seq 1 120); do
+  if curl -fsS "http://127.0.0.1:$${PROMETHEUS_HOST_PORT}/-/healthy" >/dev/null; then
+    PROMETHEUS_READY=true
+    break
+  fi
+  restart_port_forward_if_stopped prometheus-port-forward.service
+  sleep 5
+done
+
+if [ "$${WEB_READY}" = "true" ] && [ "$${ARGOCD_READY}" = "true" ] && [ "$${GRAFANA_READY}" = "true" ] && [ "$${PROMETHEUS_READY}" = "true" ]; then
+  exit 0
+fi
+
+systemctl status minikube-web-port-forward.service --no-pager || true
+systemctl status argocd-server-port-forward.service --no-pager || true
+systemctl status grafana-port-forward.service --no-pager || true
+systemctl status prometheus-port-forward.service --no-pager || true
+sudo -iu ubuntu kubectl get applications -n argocd || true
+sudo -iu ubuntu kubectl get all -n demo || true
+sudo -iu ubuntu kubectl get all -n monitoring || true
+sudo -iu ubuntu kubectl logs -n demo -l app.kubernetes.io/name=web --all-containers=true || true
+exit 1

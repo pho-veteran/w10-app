@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scriptoria — Notes</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="page">
+    <section class="hero vellum">
+      <p class="eyebrow">Scriptoria Revert 1</p>
+      <h1>A small ledger for passing thoughts</h1>
+      <p class="lead">
+        Keep brief notes in one shared scribe’s chamber. The ink lives on the backend for now;
+        the shelves may become proper archives later.
+      </p>
+      <button id="debug-toggle" class="ghost-button" type="button" aria-expanded="false">
+        Inspect the hall
+      </button>
+    </section>
+
+    <section class="composer vellum" aria-labelledby="composer-title">
+      <h2 id="composer-title">Add a note</h2>
+      <form id="note-form" class="note-form">
+        <label class="sr-only" for="note-text">Note text</label>
+        <textarea id="note-text" name="text" rows="4" maxlength="1000" placeholder="Write your thought..." required></textarea>
+        <div class="composer-actions">
+          <p id="note-hint" class="hint">Shared backend store. Refresh safe until the server restarts.</p>
+          <button type="submit">Seal note</button>
+        </div>
+      </form>
+      <p id="form-status" class="status" aria-live="polite"></p>
+    </section>
+
+    <section class="notes-section vellum" aria-labelledby="notes-title">
+      <div class="section-header">
+        <h2 id="notes-title">Current notes</h2>
+        <span id="note-count" class="pill">0</span>
+      </div>
+      <p id="empty-state" class="empty-state">No notes yet. The ledger awaits the first line.</p>
+      <ul id="notes-list" class="notes-list" aria-live="polite"></ul>
+    </section>
+
+    <section id="debug-panel" class="debug-panel vellum" hidden aria-labelledby="debug-title">
+      <div class="section-header">
+        <h2 id="debug-title">Hall ledger</h2>
+        <span class="pill subtle">infra</span>
+      </div>
+      <dl class="details">
+        <div>
+          <dt>Project</dt>
+          <dd id="debug-project">-</dd>
+        </div>
+        <div>
+          <dt>Environment</dt>
+          <dd id="debug-environment">-</dd>
+        </div>
+        <div>
+          <dt>NodePort</dt>
+          <dd id="debug-node-port">-</dd>
+        </div>
+        <div>
+          <dt>Route</dt>
+          <dd id="debug-request-path">-</dd>
+        </div>
+        <div>
+          <dt>Timestamp</dt>
+          <dd id="debug-timestamp">-</dd>
+        </div>
+      </dl>
+      <div class="debug-chaos">
+        <div class="chaos-row">
+          <select id="inject-count">
+            <option value="5">5 errors — 5m: ~23% · 1h: ~4%</option>
+            <option value="50" selected>50 errors — 5m: ~75% · 1h: ~30%</option>
+            <option value="100">100 errors — 5m: ~85% · 1h: ~47%</option>
+            <option value="2000">2000 errors — 5m: ~99% · 1h: ~95%</option>
+          </select>
+          <button id="fire-alert-btn" type="button">Trigger alert</button>
+        </div>
+        <p id="debug-alert-status" class="status" aria-live="polite"></p>
+      </div>
+    </section>
+  </main>
+
+  <template id="note-template">
+    <li class="note-card">
+      <article>
+        <div class="note-meta">
+          <span class="note-crest">✦</span>
+          <time class="note-time"></time>
+        </div>
+        <p class="note-text"></p>
+        <button class="note-delete" type="button">Burn</button>
+      </article>
+    </li>
+  </template>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
