@@ -5,6 +5,7 @@ const noteFormEl = document.getElementById("note-form");
 const noteTextEl = document.getElementById("note-text");
 const formStatusEl = document.getElementById("form-status");
 const noteTemplate = document.getElementById("note-template");
+const skeletonTemplate = document.getElementById("skeleton-template");
 const debugToggleEl = document.getElementById("debug-toggle");
 const debugPanelEl = document.getElementById("debug-panel");
 const fireAlertBtnEl = document.getElementById("fire-alert-btn");
@@ -23,6 +24,14 @@ function formatTime(value) {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function renderSkeleton(count = 3) {
+  notesListEl.textContent = "";
+  emptyStateEl.hidden = true;
+  for (let index = 0; index < count; index += 1) {
+    notesListEl.appendChild(skeletonTemplate.content.firstElementChild.cloneNode(true));
+  }
 }
 
 function renderNotes() {
@@ -61,12 +70,15 @@ async function requestJson(url, options) {
 }
 
 async function loadNotes() {
+  renderSkeleton();
   try {
     const payload = await requestJson("/api/notes");
     notes = payload.notes || [];
     renderNotes();
     setStatus("Ledger ready.");
   } catch (error) {
+    notes = [];
+    renderNotes();
     setStatus(`Could not read the ledger: ${error.message}`, "error");
   }
 }

@@ -4,21 +4,33 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Scriptoria — Notes</title>
+  <meta name="description" content="Scriptoria is a small shared ledger for passing thoughts. Notes live on the backend until the server restarts.">
+  <meta name="theme-color" content="#efe0bd">
+  <meta property="og:title" content="Scriptoria — Notes">
+  <meta property="og:description" content="A small shared ledger for passing thoughts.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://picsum.photos/seed/scriptoria/1200/630">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%23f4ead2'/%3E%3Crect%20x='2'%20y='2'%20width='28'%20height='28'%20rx='5.5'%20fill='none'%20stroke='%239b6a2f'%20stroke-width='1.4'/%3E%3Ctext%20x='16'%20y='23'%20font-size='20'%20text-anchor='middle'%20fill='%238c2f28'%20font-family='Georgia,serif'%3E%E2%9C%A6%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,400..600&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <a class="skip-link" href="#composer-title">Skip to writing</a>
+
   <main class="page">
-    <section class="hero vellum">
-      <p class="eyebrow">Scriptoria Revert 1</p>
+    <header class="hero vellum">
+      <p class="eyebrow">Scriptoria · Revert 1</p>
       <h1>A small ledger for passing thoughts</h1>
       <p class="lead">
         Keep brief notes in one shared scribe’s chamber. The ink lives on the backend for now;
         the shelves may become proper archives later.
       </p>
-      <button id="debug-toggle" class="ghost-button" type="button" aria-expanded="false">
+      <button id="debug-toggle" class="ghost-button" type="button" aria-expanded="false" aria-controls="debug-panel">
         Inspect the hall
       </button>
-    </section>
+    </header>
 
     <section class="composer vellum" aria-labelledby="composer-title">
       <h2 id="composer-title">Add a note</h2>
@@ -38,7 +50,7 @@
         <h2 id="notes-title">Current notes</h2>
         <span id="note-count" class="pill">0</span>
       </div>
-      <p id="empty-state" class="empty-state">No notes yet. The ledger awaits the first line.</p>
+      <p id="empty-state" class="empty-state" hidden>No notes yet. The ledger awaits the first line.</p>
       <ul id="notes-list" class="notes-list" aria-live="polite"></ul>
     </section>
 
@@ -70,6 +82,7 @@
         </div>
       </dl>
       <div class="debug-chaos">
+        <label class="chaos-label" for="inject-count">Synthetic error load</label>
         <div class="chaos-row">
           <select id="inject-count">
             <option value="5">5 errors — 5m: ~23% · 1h: ~4%</option>
@@ -88,11 +101,25 @@
     <li class="note-card">
       <article>
         <div class="note-meta">
-          <span class="note-crest">✦</span>
+          <span class="note-crest" aria-hidden="true">✦</span>
           <time class="note-time"></time>
         </div>
         <p class="note-text"></p>
         <button class="note-delete" type="button">Burn</button>
+      </article>
+    </li>
+  </template>
+
+  <template id="skeleton-template">
+    <li class="note-card note-card--skeleton" aria-hidden="true">
+      <article>
+        <div class="note-meta">
+          <span class="skeleton skeleton-crest"></span>
+          <span class="skeleton skeleton-time"></span>
+        </div>
+        <span class="skeleton skeleton-line"></span>
+        <span class="skeleton skeleton-line short"></span>
+        <span class="skeleton skeleton-button"></span>
       </article>
     </li>
   </template>
