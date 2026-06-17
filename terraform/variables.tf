@@ -43,7 +43,7 @@ variable "private_subnet_cidr" {
 variable "instance_type" {
   description = "EC2 instance type for the minikube host."
   type        = string
-  default     = "t3.medium"
+  default     = "t3.large"
 }
 
 variable "root_volume_size" {

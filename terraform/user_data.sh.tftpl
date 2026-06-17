@@ -78,7 +78,7 @@ rm -rf "$${REPO_DIR}"
 sudo -iu ubuntu git clone "$${REPO_URL}" "$${REPO_DIR}"
 
 # Khởi động Minikube bằng Docker driver.
-sudo -iu ubuntu minikube start --force --driver=docker --memory=3000mb --cpus=2 --listen-address=0.0.0.0 --extra-config=kubeadm.ignore-preflight-errors=NumCPU,Mem
+sudo -iu ubuntu minikube start --force --driver=docker --memory=6000mb --cpus=2 --listen-address=0.0.0.0 --extra-config=kubeadm.ignore-preflight-errors=NumCPU,Mem
 
 # Workload image được pull từ Docker Hub theo tag trong GitOps repo.
 
