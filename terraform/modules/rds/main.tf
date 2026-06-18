@@ -7,6 +7,12 @@ resource "aws_db_subnet_group" "this" {
   })
 }
 
+resource "random_password" "master" {
+  length           = 32
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
 resource "aws_db_instance" "this" {
   identifier = "${var.name_prefix}-postgres"
 
@@ -16,8 +22,7 @@ resource "aws_db_instance" "this" {
 
   db_name  = var.database_name
   username = var.username
-
-  manage_master_user_password = true
+  password = random_password.master.result
 
   allocated_storage = 20
   storage_type      = "gp3"
@@ -39,5 +44,25 @@ resource "aws_db_instance" "this" {
 
   tags = merge(var.common_tags, {
     Name = "${var.name_prefix}-postgres"
+  })
+}
+
+resource "aws_secretsmanager_secret" "rds" {
+  name        = "${var.name_prefix}/rds"
+  description = "Static Day-B RDS connection secret consumed by External Secrets Operator."
+
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-rds-secret"
+  })
+}
+
+resource "aws_secretsmanager_secret_version" "rds" {
+  secret_id = aws_secretsmanager_secret.rds.id
+  secret_string = jsonencode({
+    host     = aws_db_instance.this.address
+    port     = tostring(aws_db_instance.this.port)
+    dbname   = var.database_name
+    username = var.username
+    password = random_password.master.result
   })
 }

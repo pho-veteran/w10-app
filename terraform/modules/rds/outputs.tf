@@ -9,6 +9,6 @@ output "port" {
 }
 
 output "master_secret_arn" {
-  description = "AWS-managed Secrets Manager ARN for the RDS master user."
-  value       = aws_db_instance.this.master_user_secret[0].secret_arn
+  description = "Static Secrets Manager ARN for the Day-B RDS connection secret."
+  value       = aws_secretsmanager_secret.rds.arn
 }

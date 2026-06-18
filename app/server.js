@@ -117,7 +117,8 @@ function createDbHealthChecker(options = {}) {
       database: secret.database,
       user: secret.username,
       password: secret.password,
-      connectionTimeoutMillis
+      connectionTimeoutMillis,
+      ssl: { rejectUnauthorized: false }
     });
 
     try {
