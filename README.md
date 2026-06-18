@@ -94,7 +94,7 @@ Triggered on push to `main` or pull requests:
 
 1. **Test** — lint, unit tests, build verification, Terraform validate
 2. **Plan** — Terraform plan on PRs
-3. **Publish** — Build & push Docker image, update GitOps repo image tag
+3. **Publish** — Build & push Docker image, update GitOps repo image overlays with tag + digest
 4. **Apply** — Terraform apply on infrastructure changes
 
 ### Required Secrets
@@ -104,7 +104,7 @@ Triggered on push to `main` or pull requests:
 | `AWS_GITHUB_ACTIONS_ROLE_ARN` | AWS OIDC role for Terraform |
 | `DOCKERHUB_USERNAME` | Docker Hub registry auth |
 | `DOCKERHUB_TOKEN` | Docker Hub registry auth |
-| `GITOPS_REPO_TOKEN` | Push image tag to GitOps repo |
+| `GITOPS_REPO_TOKEN` | Push image overlay updates to GitOps repo |
 | `TF_STATE_BUCKET` | S3 bucket for Terraform state |
 
 ## Infrastructure Details
