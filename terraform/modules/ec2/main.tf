@@ -24,6 +24,25 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+resource "aws_iam_role_policy" "read_rds_secret" {
+  name = "${var.name_prefix}-read-rds-secret"
+  role = aws_iam_role.ssm.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = var.secretsmanager_secret_arn
+      }
+    ]
+  })
+}
+
 resource "aws_iam_instance_profile" "ssm" {
   name = "${var.name_prefix}-ssm-profile"
   role = aws_iam_role.ssm.name
@@ -59,6 +78,13 @@ resource "aws_instance" "this" {
   key_name                    = aws_key_pair.generated.key_name
 
   user_data_replace_on_change = true
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
+
   user_data_base64 = base64gzip(templatefile("${path.root}/user_data.sh.tftpl", {
     gitops_repo_url      = var.gitops_repo_url
     kubectl_version      = var.kubectl_version
@@ -81,5 +107,8 @@ resource "aws_instance" "this" {
     Role = "single-node-k8s"
   })
 
-  depends_on = [aws_iam_role_policy_attachment.ssm_core]
+  depends_on = [
+    aws_iam_role_policy_attachment.ssm_core,
+    aws_iam_role_policy.read_rds_secret
+  ]
 }

@@ -147,3 +147,43 @@ resource "aws_security_group_rule" "ec2_egress" {
   protocol          = "-1"
   cidr_blocks       = ["0.0.0.0/0"]
 }
+
+resource "aws_security_group" "rds" {
+  name        = "${var.name_prefix}-rds-sg"
+  description = "Security group for private Day-B PostgreSQL"
+  vpc_id      = var.vpc_id
+
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-rds-sg"
+  })
+}
+
+resource "aws_security_group_rule" "rds_from_ec2" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.rds.id
+  description              = "PostgreSQL from minikube host"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.ec2.id
+}
+
+resource "aws_security_group" "secretsmanager_endpoint" {
+  name        = "${var.name_prefix}-secretsmanager-endpoint-sg"
+  description = "Security group for Secrets Manager interface endpoint"
+  vpc_id      = var.vpc_id
+
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-secretsmanager-endpoint-sg"
+  })
+}
+
+resource "aws_security_group_rule" "secretsmanager_endpoint_from_ec2" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.secretsmanager_endpoint.id
+  description              = "HTTPS from minikube host"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.ec2.id
+}

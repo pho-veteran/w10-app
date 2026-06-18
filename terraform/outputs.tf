@@ -38,3 +38,13 @@ output "private_key_path" {
   value       = module.ec2.private_key_path
   sensitive   = true
 }
+
+output "rds_endpoint" {
+  description = "Private RDS PostgreSQL endpoint address."
+  value       = module.rds.endpoint
+}
+
+output "rds_master_secret_arn" {
+  description = "AWS-managed Secrets Manager ARN synced by ESO into Kubernetes."
+  value       = module.rds.master_secret_arn
+}

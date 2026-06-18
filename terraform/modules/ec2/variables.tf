@@ -68,6 +68,11 @@ variable "gitops_repo_url" {
   type        = string
 }
 
+variable "secretsmanager_secret_arn" {
+  description = "Secrets Manager secret ARN that ESO may read through the EC2 instance profile."
+  type        = string
+}
+
 variable "private_key_path" {
   description = "Local path used by local provider to persist the generated SSH private key."
   type        = string

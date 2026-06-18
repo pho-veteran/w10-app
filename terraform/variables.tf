@@ -40,6 +40,36 @@ variable "private_subnet_cidr" {
   default     = "10.42.10.0/24"
 }
 
+variable "rds_private_subnet_cidr" {
+  description = "CIDR block for the second private subnet required by the RDS subnet group."
+  type        = string
+  default     = "10.42.11.0/24"
+}
+
+variable "rds_instance_class" {
+  description = "Cheapest practical RDS instance class for the Day-B PostgreSQL lab."
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "rds_engine_version" {
+  description = "PostgreSQL engine version for the Day-B RDS instance."
+  type        = string
+  default     = "17.10"
+}
+
+variable "rds_database_name" {
+  description = "Initial PostgreSQL database name."
+  type        = string
+  default     = "w10app"
+}
+
+variable "rds_username" {
+  description = "PostgreSQL master/app username for the lab database."
+  type        = string
+  default     = "appuser"
+}
+
 variable "instance_type" {
   description = "EC2 instance type for the minikube host."
   type        = string

@@ -1,5 +1,7 @@
 const express = require("express");
+const fs = require("fs");
 const path = require("path");
+const { Client } = require("pg");
 const promClient = require("prom-client");
 
 function getRouteLabel(req) {
@@ -92,12 +94,58 @@ function createNoteStore() {
   };
 }
 
+function readDbSecret(secretDir) {
+  const keys = ["host", "port", "database", "username", "password"];
+  const values = {};
+
+  for (const key of keys) {
+    values[key] = fs.readFileSync(path.join(secretDir, key), "utf8").trim();
+  }
+
+  return values;
+}
+
+function createDbHealthChecker(options = {}) {
+  const secretDir = options.secretDir || process.env.DB_SECRET_DIR || "/etc/db-secret";
+  const connectionTimeoutMillis = Number(process.env.DB_CONNECT_TIMEOUT_MS || 2000);
+
+  return async function checkDbHealth() {
+    const secret = readDbSecret(secretDir);
+    const client = new Client({
+      host: secret.host,
+      port: Number(secret.port),
+      database: secret.database,
+      user: secret.username,
+      password: secret.password,
+      connectionTimeoutMillis
+    });
+
+    try {
+      await client.connect();
+      const result = await client.query("select now() as server_time, current_database() as database, current_user as username");
+      const row = result.rows[0];
+
+      return {
+        dbConnected: true,
+        database: row.database,
+        user: row.username,
+        host: secret.host,
+        serverTime: row.server_time,
+        secretSource: secretDir
+      };
+    } finally {
+      await client.end().catch(() => {});
+    }
+  };
+}
+
 function createApp(options = {}) {
   const app = express();
   const projectName = process.env.PROJECT_NAME || "p2-w10-lab";
   const environment = process.env.ENVIRONMENT || "lab";
   const nodePort = process.env.NODE_PORT || "30080";
   const noteStore = options.noteStore || createNoteStore();
+  const dbHealthChecker = options.dbHealthChecker || createDbHealthChecker();
   const metrics = createMetrics();
 
   app.use(express.json({ limit: "32kb" }));
@@ -130,6 +178,24 @@ function createApp(options = {}) {
 
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.get("/api/message", (_req, res) => {
+    res.json({ message: "Scriptoria backend ready." });
+  });
+
+  app.get("/api/db/health", async (_req, res) => {
+    try {
+      const db = await dbHealthChecker();
+      res.json({ ok: true, ...db });
+    } catch (error) {
+      res.status(503).json({
+        ok: false,
+        dbConnected: false,
+        error: "db_unavailable",
+        message: error.code === "ENOENT" ? "Database secret files are not mounted." : error.message
+      });
+    }
   });
 
   app.get("/api/notes", (_req, res) => {
@@ -204,6 +270,7 @@ if (require.main === module) {
 
 module.exports = {
   createApp,
+  createDbHealthChecker,
   createNoteStore,
   startServer
 };

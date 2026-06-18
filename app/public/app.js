@@ -133,6 +133,14 @@ async function loadDebugInfo() {
   setDebugField("debug-node-port", payload.nodePort);
   setDebugField("debug-request-path", payload.requestPath);
   setDebugField("debug-timestamp", payload.timestamp);
+
+  try {
+    const db = await requestJson("/api/db/health");
+    setDebugField("debug-rds-status", `${db.database} as ${db.user} — connected`);
+  } catch (error) {
+    setDebugField("debug-rds-status", `unavailable — ${error.message}`);
+  }
+
   debugLoaded = true;
 }
 

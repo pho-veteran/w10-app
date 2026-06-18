@@ -18,6 +18,11 @@ variable "private_subnet_cidr" {
   type        = string
 }
 
+variable "rds_private_subnet_cidr" {
+  description = "CIDR block for the second private subnet required by RDS."
+  type        = string
+}
+
 variable "common_tags" {
   description = "Common tags applied to all AWS resources."
   type        = map(string)

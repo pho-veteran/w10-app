@@ -3,8 +3,8 @@ const assert = require("node:assert/strict");
 const http = require("node:http");
 const { createApp, createNoteStore } = require("./server");
 
-async function startTestServer() {
-  const app = createApp({ noteStore: createNoteStore() });
+async function startTestServer(options = {}) {
+  const app = createApp({ noteStore: createNoteStore(), ...options });
 
   return await new Promise((resolve, reject) => {
     const server = app.listen(0, "127.0.0.1", () => {
@@ -58,8 +58,8 @@ async function request(server, requestPath, options = {}) {
   });
 }
 
-async function withServer(callback) {
-  const server = await startTestServer();
+async function withServer(callback, options = {}) {
+  const server = await startTestServer(options);
 
   try {
     await callback(server);
@@ -74,6 +74,61 @@ test("GET /api/health returns ok payload", async () => {
     assert.equal(response.statusCode, 200);
     assert.deepEqual(JSON.parse(response.body), { status: "ok" });
   });
+});
+
+test("GET /api/message keeps bootstrap smoke check compatible", async () => {
+  await withServer(async (server) => {
+    const response = await request(server, "/api/message");
+    const payload = JSON.parse(response.body);
+
+    assert.equal(response.statusCode, 200);
+    assert.ok(payload.message);
+  });
+});
+
+test("GET /api/db/health returns database status", async () => {
+  await withServer(
+    async (server) => {
+      const response = await request(server, "/api/db/health");
+      const payload = JSON.parse(response.body);
+
+      assert.equal(response.statusCode, 200);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.dbConnected, true);
+      assert.equal(payload.database, "w10app");
+      assert.equal(payload.user, "appuser");
+      assert.equal(payload.secretSource, "/etc/db-secret");
+    },
+    {
+      dbHealthChecker: async () => ({
+        dbConnected: true,
+        database: "w10app",
+        user: "appuser",
+        host: "db.internal",
+        serverTime: "2026-06-18T00:00:00.000Z",
+        secretSource: "/etc/db-secret"
+      })
+    }
+  );
+});
+
+test("GET /api/db/health reports unavailable database", async () => {
+  await withServer(
+    async (server) => {
+      const response = await request(server, "/api/db/health");
+      const payload = JSON.parse(response.body);
+
+      assert.equal(response.statusCode, 503);
+      assert.equal(payload.ok, false);
+      assert.equal(payload.dbConnected, false);
+      assert.equal(payload.error, "db_unavailable");
+    },
+    {
+      dbHealthChecker: async () => {
+        throw new Error("connection refused");
+      }
+    }
+  );
 });
 
 test("GET /api/notes returns shared notes array", async () => {

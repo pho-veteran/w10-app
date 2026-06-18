@@ -46,6 +46,18 @@ resource "aws_subnet" "private" {
   })
 }
 
+resource "aws_subnet" "rds_private" {
+  vpc_id                  = aws_vpc.this.id
+  cidr_block              = var.rds_private_subnet_cidr
+  availability_zone       = data.aws_availability_zones.available.names[1]
+  map_public_ip_on_launch = false
+
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-private-rds-2"
+    Tier = "private"
+  })
+}
+
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.this.id
 
@@ -102,3 +114,9 @@ resource "aws_route_table_association" "private" {
   subnet_id      = aws_subnet.private.id
   route_table_id = aws_route_table.private.id
 }
+
+resource "aws_route_table_association" "rds_private" {
+  subnet_id      = aws_subnet.rds_private.id
+  route_table_id = aws_route_table.private.id
+}
+
