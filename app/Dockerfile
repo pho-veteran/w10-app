@@ -1,5 +1,9 @@
 FROM node:20-alpine
 
+RUN apk upgrade --no-cache \
+  && npm install -g npm@latest \
+  && npm cache clean --force
+
 WORKDIR /usr/src/app
 
 COPY package*.json ./
