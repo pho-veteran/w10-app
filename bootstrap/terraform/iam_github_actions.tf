@@ -41,6 +41,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "ec2:CreateSubnet",
       "ec2:CreateTags",
       "ec2:CreateVpc",
+      "ec2:CreateVpcEndpoint",
       "ec2:DeleteInternetGateway",
       "ec2:DeleteNatGateway",
       "ec2:DeleteRoute",
@@ -49,10 +50,12 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "ec2:DeleteSubnet",
       "ec2:DeleteTags",
       "ec2:DeleteVpc",
+      "ec2:DeleteVpcEndpoints",
       "ec2:DetachInternetGateway",
       "ec2:DisassociateRouteTable",
       "ec2:ModifySubnetAttribute",
       "ec2:ModifyVpcAttribute",
+      "ec2:ModifyVpcEndpoint",
       "ec2:ReleaseAddress",
       "ec2:ReplaceRoute",
       "ec2:RevokeSecurityGroupEgress",
@@ -73,6 +76,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "ec2:StopInstances",
       "ec2:TerminateInstances",
       "ec2:ModifyInstanceAttribute",
+      "ec2:ModifyInstanceMetadataOptions",
       "ec2:CreateVolume",
       "ec2:DeleteVolume",
       "ec2:AttachVolume",
@@ -111,6 +115,49 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "elasticloadbalancing:ModifyTargetGroupAttributes",
       "elasticloadbalancing:RegisterTargets",
       "elasticloadbalancing:RemoveTags",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "RdsLifecycle"
+    effect = "Allow"
+    actions = [
+      "rds:AddTagsToResource",
+      "rds:CreateDBInstance",
+      "rds:CreateDBSubnetGroup",
+      "rds:DeleteDBInstance",
+      "rds:DeleteDBSubnetGroup",
+      "rds:Describe*",
+      "rds:ListTagsForResource",
+      "rds:ModifyDBInstance",
+      "rds:ModifyDBSubnetGroup",
+      "rds:RemoveTagsFromResource",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "RdsServiceLinkedRoleLifecycle"
+    effect    = "Allow"
+    actions   = ["iam:CreateServiceLinkedRole"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:AWSServiceName"
+      values   = ["rds.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid    = "SecretsManagerManagedRdsReads"
+    effect = "Allow"
+    actions = [
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:ListSecretVersionIds",
+      "secretsmanager:ListSecrets",
     ]
     resources = ["*"]
   }

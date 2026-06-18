@@ -344,17 +344,26 @@ jobs:
           arn = os.environ["RDS_SECRET_ARN"]
           text = path.read_text()
           old = "secretArn=RDS_MASTER_SECRET_ARN_PLACEHOLDER"
+          if not arn:
+              raise SystemExit("terraform output rds_master_secret_arn is empty")
+
           if old in text:
               text = text.replace(old, f"secretArn={arn}")
-          else:
+          elif "- secretArn=" in text:
               lines = []
+              changed = False
               for line in text.splitlines():
                   if line.strip().startswith("- secretArn="):
                       indent = line[: len(line) - len(line.lstrip())]
                       lines.append(f"{indent}- secretArn={arn}")
+                      changed = True
                   else:
                       lines.append(line)
+              if not changed:
+                  raise SystemExit(f"No secretArn literal found in {path}")
               text = "\n".join(lines) + "\n"
+          else:
+              raise SystemExit(f"No secretArn placeholder or literal found in {path}")
           path.write_text(text)
           PY
 
