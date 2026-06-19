@@ -155,9 +155,25 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     effect = "Allow"
     actions = [
       "secretsmanager:DescribeSecret",
+      "secretsmanager:GetResourcePolicy",
       "secretsmanager:GetSecretValue",
       "secretsmanager:ListSecretVersionIds",
       "secretsmanager:ListSecrets",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "TerraformRefreshReads"
+    effect = "Allow"
+    actions = [
+      "rds:DescribeDBInstances",
+      "rds:DescribeDBSubnetGroups",
+      "rds:ListTagsForResource",
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:GetResourcePolicy",
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:ListSecretVersionIds",
     ]
     resources = ["*"]
   }
