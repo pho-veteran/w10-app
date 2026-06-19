@@ -48,8 +48,9 @@ resource "aws_db_instance" "this" {
 }
 
 resource "aws_secretsmanager_secret" "rds" {
-  name        = "${var.name_prefix}/rds"
-  description = "Static Day-B RDS connection secret consumed by External Secrets Operator."
+  name                    = "${var.name_prefix}/rds"
+  description             = "Static Day-B RDS connection secret consumed by External Secrets Operator."
+  recovery_window_in_days = 0
 
   tags = merge(var.common_tags, {
     Name = "${var.name_prefix}-rds-secret"
